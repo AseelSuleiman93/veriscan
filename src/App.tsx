@@ -407,7 +407,7 @@ function LandingPage({ onLogin }) {
   const handleSend=async()=>{ if(!form.name||!form.email)return; setSending(true); await new Promise(r=>setTimeout(r,1200)); setSent(true); setSending(false); };
 
   return (
-    <div style={{ minHeight:"100vh", background:LIGHT, fontFamily:"'Cormorant Garamond','Georgia',serif", color:DARK, overflowX:"hidden" }}>
+    <div style={{ minHeight:"100vh", background:LIGHT, fontFamily:"'Cormorant Garamond','Georgia',serif", color:DARK, overflowX:"hidden", width:"100%", maxWidth:"100vw" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
         *{box-sizing:border-box;margin:0;padding:0} html{scroll-behavior:smooth}
@@ -453,7 +453,7 @@ function LandingPage({ onLogin }) {
       </nav>
 
       {/* Hero */}
-      <section ref={heroRef} style={{ minHeight:"100vh", display:"flex", alignItems:"center", position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${CREAM} 0%,${GOLD_LL} 50%,#FFF8E8 100%)`, paddingTop:"64px" }}>
+      <section ref={heroRef} style={{ minHeight:"100vh", display:"flex", alignItems:"center", position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${CREAM} 0%,${GOLD_LL} 50%,#FFF8E8 100%)`, paddingTop:"64px", width:"100%" }}>
         <div style={{ position:"absolute", inset:0, backgroundImage:`radial-gradient(${GOLD}18 1px,transparent 1px)`, backgroundSize:"36px 36px", pointerEvents:"none" }}/>
         <div style={{ position:"absolute", right:"-4%", top:"8%", opacity:0.06, animation:"float 8s ease-in-out infinite" }}><FP size={500} color={GOLD}/></div>
         <div style={{ width:"100%", maxWidth:"1200px", margin:"0 auto", padding:"60px 48px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:"64px", alignItems:"center", position:"relative", zIndex:1, opacity:heroVis?1:0, transform:heroVis?"none":"translateY(30px)", transition:"all .9s" }}>
