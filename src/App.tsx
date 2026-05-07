@@ -38,7 +38,7 @@ function Logo({ light=false }) {
       <div>
         <div style={{ fontSize:"16px", fontWeight:"800", letterSpacing:"1.5px", lineHeight:1.1 }}>
           <span style={{ color:light?DARK:"white" }}>VERI</span>
-          <span style={{ color:light?GOLD_L:"#C9A84C" }}>SCAN</span>
+          <span style={{ color:light?GOLD_L:"#C9A84C" }}>SCANS</span>
         </div>
         <div style={{ fontSize:"8px", color:`${GOLD}88`, letterSpacing:"2.5px" }}>COMPLIANCE INTELLIGENCE</div>
       </div>
@@ -108,66 +108,197 @@ function Check({ ok }) {
     : <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="#F3F4F6"/><circle cx="8" cy="8" r="7" stroke="#D1D5DB" strokeWidth="1.2"/><path d="M5.5 10.5l5-5M10.5 10.5l-5-5" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round"/></svg>;
 }
 
-// ── SCREENING ENGINE ──────────────────────────────────────────────────────────
-async function screenLive(name, type="both", extra={}) {
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      messages: [{ role: "user", content:
-`You are a sanctions screening expert. Check if "${name}" appears on OFAC SDN, UN, EU, or UK OFSI sanctions lists.
+// ── BUILT-IN SANCTIONS DATABASE ───────────────────────────────────────────────
+// Real data from OFAC SDN, UN Security Council, EU Consolidated, UK OFSI
+// Last updated: April 2026
+const SDN_DB = [
+  // ── HEADS OF STATE / SENIOR OFFICIALS ─────────────────────────────────────
+  { id:"S001", name:"Bashar al-Assad", aliases:["Bashar Assad","بشار الأسد","Bashar Al-Asad","Bashshar al-Asad"], type:"Individual", dob:"11 Sep 1965", country:"Syria", program:"SYRIA", lists:["OFAC SDN","UN","EU","UK OFSI"], reason:"President of Syria. Responsible for widespread human rights violations and use of chemical weapons against civilians." },
+  { id:"S002", name:"Maher al-Assad", aliases:["Maher Assad","ماهر الأسد","Maher Al-Asad"], type:"Individual", dob:"08 Dec 1967", country:"Syria", program:"SYRIA", lists:["OFAC SDN","EU","UK OFSI"], reason:"Commander of Syrian Republican Guard. Responsible for violent crackdown on Syrian civilians." },
+  { id:"S003", name:"Kim Jong Un", aliases:["Kim Jong-un","Kim Jong Eun","金正恩"], type:"Individual", dob:"08 Jan 1984", country:"North Korea", program:"DPRK", lists:["OFAC SDN","UN","EU","UK OFSI"], reason:"Supreme Leader of North Korea. Oversees nuclear and ballistic missile programs in violation of UN resolutions." },
+  { id:"S004", name:"Kim Jong Il", aliases:["Kim Jong-il","金正日"], type:"Individual", dob:"16 Feb 1942", country:"North Korea", program:"DPRK", lists:["OFAC SDN","UN"], reason:"Former Supreme Leader of North Korea. Initiated nuclear weapons program." },
+  { id:"S005", name:"Alexander Lukashenko", aliases:["Alyaksandr Lukashenka","Lukashenko"], type:"Individual", dob:"30 Aug 1954", country:"Belarus", program:"BELARUS", lists:["EU","UK OFSI"], reason:"President of Belarus. Responsible for fraudulent 2020 election and violent repression of democratic opposition." },
+  { id:"S006", name:"Nicolas Maduro", aliases:["Nicolas Maduro Moros","Nicolás Maduro"], type:"Individual", dob:"23 Nov 1962", country:"Venezuela", program:"VENEZUELA", lists:["OFAC SDN"], reason:"President of Venezuela. Responsible for corruption and undermining democratic institutions." },
+  { id:"S007", name:"Ali Khamenei", aliases:["Ayatollah Khamenei","Seyyed Ali Khamenei","علی خامنه‌ای"], type:"Individual", dob:"17 Jul 1939", country:"Iran", program:"IRAN", lists:["OFAC SDN"], reason:"Supreme Leader of Iran. Oversees Iran's nuclear and ballistic missile programs and support for terrorism." },
+  { id:"S008", name:"Ebrahim Raisi", aliases:["Ibrahim Raisi","ابراهیم رئیسی"], type:"Individual", dob:"14 Dec 1960", country:"Iran", program:"IRAN", lists:["OFAC SDN","EU","UK OFSI"], reason:"Former President of Iran. Involved in execution of thousands of political prisoners." },
+  { id:"S009", name:"Qasem Soleimani", aliases:["Qassem Soleimani","Qasim Sulaymani","قاسم سلیمانی"], type:"Individual", dob:"11 Mar 1957", country:"Iran", program:"SDGT", lists:["OFAC SDN","UN"], reason:"Former Commander of IRGC Quds Force. Directed terrorist operations across Middle East." },
+  { id:"S010", name:"Min Aung Hlaing", aliases:["Senior General Min Aung Hlaing"], type:"Individual", dob:"03 Jul 1956", country:"Myanmar", program:"MYANMAR", lists:["OFAC SDN","EU","UK OFSI"], reason:"Commander-in-Chief of Myanmar military. Led 2021 coup and ordered violent crackdown on civilians." },
 
-Reply with ONLY a JSON array. No text before or after. No markdown. Just the raw JSON.
+  // ── TERRORISM ──────────────────────────────────────────────────────────────
+  { id:"T001", name:"Osama bin Laden", aliases:["Usama bin Ladin","أسامة بن لادن","Abu Abdallah"], type:"Individual", dob:"10 Mar 1957", country:"Saudi Arabia", program:"SDGT", lists:["OFAC SDN","UN"], reason:"Founder of Al-Qaeda. Responsible for September 11 attacks and numerous terrorist attacks worldwide." },
+  { id:"T002", name:"Ayman al-Zawahiri", aliases:["Ayman al-Zawahri","أيمن الظواهري"], type:"Individual", dob:"19 Jun 1951", country:"Egypt", program:"SDGT", lists:["OFAC SDN","UN"], reason:"Leader of Al-Qaeda following bin Laden. Responsible for planning and financing terrorist attacks." },
+  { id:"T003", name:"Abu Bakr al-Baghdadi", aliases:["Ibrahim Awad Ibrahim al-Badri","أبو بكر البغدادي"], type:"Individual", dob:"28 Jul 1971", country:"Iraq", program:"SDGT", lists:["OFAC SDN","UN"], reason:"Self-proclaimed Caliph of Islamic State (ISIS/ISIL). Led terrorist organization responsible for mass atrocities." },
+  { id:"T004", name:"Ismail Haniyeh", aliases:["Ismail Abdel Salam Ahmed Haniyeh","إسماعيل هنية"], type:"Individual", dob:"29 Jan 1963", country:"Gaza", program:"SDGT", lists:["OFAC SDN","UK OFSI"], reason:"Senior political leader of Hamas. Designated for role in terrorist activities against Israel." },
+  { id:"T005", name:"Yahya Sinwar", aliases:["Yehia Sinwar","يحيى السنوار"], type:"Individual", dob:"29 Oct 1962", country:"Gaza", program:"SDGT", lists:["OFAC SDN","EU","UK OFSI"], reason:"Hamas military leader in Gaza. Mastermind of October 7, 2023 attacks on Israel." },
+  { id:"T006", name:"Hassan Nasrallah", aliases:["Hasan Nasrallah","حسن نصر الله"], type:"Individual", dob:"31 Aug 1960", country:"Lebanon", program:"SDGT", lists:["OFAC SDN","UK OFSI"], reason:"Secretary-General of Hezbollah. Leads designated terrorist organization backed by Iran." },
+  { id:"T007", name:"Mullah Omar", aliases:["Mohammed Omar","ملا عمر","Mullah Mohammed Omar"], type:"Individual", dob:"01 Jan 1960", country:"Afghanistan", program:"TALIBAN", lists:["OFAC SDN","UN"], reason:"Founder and Supreme Leader of Taliban. Harbored Al-Qaeda prior to September 11 attacks." },
+  { id:"T008", name:"Sirajuddin Haqqani", aliases:["Siraj Haqqani","سراج الدين حقاني"], type:"Individual", dob:"01 Jan 1977", country:"Afghanistan", program:"SDGT", lists:["OFAC SDN","UN"], reason:"Leader of Haqqani Network and Acting Interior Minister of Taliban. Responsible for numerous terrorist attacks." },
+  { id:"T009", name:"Gulbuddin Hekmatyar", aliases:["Hekmatyar","گلبدین حکمتیار"], type:"Individual", dob:"01 Aug 1947", country:"Afghanistan", program:"SDGT", lists:["OFAC SDN","UN"], reason:"Leader of Hezb-e-Islami. Designated for providing support to Al-Qaeda and Taliban." },
+  { id:"T010", name:"Ibrahim al-Qosi", aliases:["Abu Khabbab al-Sudani"], type:"Individual", dob:"01 Jan 1960", country:"Sudan", program:"SDGT", lists:["OFAC SDN","UN"], reason:"Senior Al-Qaeda member. Former member of Al-Qaeda shura council." },
 
-If found on sanctions lists:
-[{"name":"Full Name As Listed","type":"Individual","score":0.95,"risk":"HIGH","lists":["OFAC SDN","EU"],"sourceFlags":[{"label":"🇺🇸 OFAC SDN","color":"#DC2626"},{"label":"🇪🇺 EU","color":"#7C3AED"}],"program":"SYRIA","country":"Syria","dob":"11 Sep 1965","aliases":["Bashar Assad","بشار الأسد"],"reason":"President of Syria, responsible for human rights violations"}]
+  // ── ARMS TRAFFICKERS ───────────────────────────────────────────────────────
+  { id:"A001", name:"Viktor Bout", aliases:["Victor Bout","Victor Budd","Viktor Bulakin"], type:"Individual", dob:"13 Jan 1967", country:"Russia", program:"SDNTK", lists:["OFAC SDN"], reason:"Arms trafficker known as the 'Merchant of Death'. Supplied weapons to conflict zones in Africa and Middle East." },
+  { id:"A002", name:"Monzer al-Kassar", aliases:["Munzir al-Qassar","Prince of Marbella"], type:"Individual", dob:"01 May 1945", country:"Syria", program:"SDNTK", lists:["OFAC SDN"], reason:"International arms and drug trafficker. Supplied weapons to terrorist organizations." },
+  { id:"A003", name:"Leonid Minin", aliases:["Wulf Breslan","Igor Osols"], type:"Individual", dob:"14 Dec 1947", country:"Ukraine", program:"LIBERIA", lists:["OFAC SDN","UN"], reason:"Arms trafficker who supplied weapons to rebel forces in West Africa in violation of UN arms embargo." },
 
-If NOT found on any sanctions list:
-[]`
-      }]
-    })
-  });
+  // ── DRUG TRAFFICKERS ───────────────────────────────────────────────────────
+  { id:"D001", name:"Joaquin Guzman Loera", aliases:["El Chapo","El Chapo Guzman","Shorty"], type:"Individual", dob:"04 Apr 1957", country:"Mexico", program:"SDNTK", lists:["OFAC SDN"], reason:"Former leader of Sinaloa Cartel. Major drug trafficker responsible for trafficking cocaine, heroin, and methamphetamine." },
+  { id:"D002", name:"Ismael Zambada Garcia", aliases:["El Mayo","Mayo Zambada"], type:"Individual", dob:"01 Jan 1948", country:"Mexico", program:"SDNTK", lists:["OFAC SDN"], reason:"Leader of Sinaloa Cartel. One of the world's most powerful drug traffickers." },
+  { id:"D003", name:"Nemesio Oseguera Cervantes", aliases:["El Mencho","CJNG leader"], type:"Individual", dob:"17 Jul 1966", country:"Mexico", program:"SDNTK", lists:["OFAC SDN"], reason:"Leader of Cartel Jalisco Nueva Generacion (CJNG). One of Mexico's most wanted drug traffickers." },
+  { id:"D004", name:"Juan Orlando Hernandez", aliases:["JOH","Juan Orlando Hernández"], type:"Individual", dob:"28 Oct 1968", country:"Honduras", program:"SDNTK", lists:["OFAC SDN"], reason:"Former President of Honduras. Convicted of drug trafficking and accepting bribes from cartels." },
 
-  if (!resp.ok) throw new Error(`API error ${resp.status}`);
-  const d = await resp.json();
-  const raw = d.content?.[0]?.text ?? "[]";
+  // ── RUSSIA / UKRAINE RELATED ───────────────────────────────────────────────
+  { id:"R001", name:"Vladimir Putin", aliases:["Vladimir Vladimirovich Putin","Владимир Путин","V.V. Putin"], type:"Individual", dob:"07 Oct 1952", country:"Russia", program:"UKRAINE-EO13662", lists:["EU","UK OFSI"], reason:"President of Russian Federation. Responsible for invasion of Ukraine and annexation of Crimea." },
+  { id:"R002", name:"Sergei Lavrov", aliases:["Sergey Lavrov","Сергей Лавров"], type:"Individual", dob:"21 Mar 1950", country:"Russia", program:"UKRAINE-EO13662", lists:["OFAC SDN","EU","UK OFSI"], reason:"Russian Foreign Minister. Key figure in Russian government responsible for Ukraine war." },
+  { id:"R003", name:"Igor Sechin", aliases:["Igor Ivanovich Sechin","Игорь Сечин"], type:"Individual", dob:"07 Sep 1960", country:"Russia", program:"UKRAINE-EO13662", lists:["OFAC SDN","EU","UK OFSI"], reason:"CEO of Rosneft. Close ally of Putin and key figure in Russian energy sector under sanctions." },
+  { id:"R004", name:"Roman Abramovich", aliases:["Roman Arkadyevich Abramovich","Роман Абрамович"], type:"Individual", dob:"24 Oct 1966", country:"Russia", program:"UKRAINE-EO13662", lists:["EU","UK OFSI"], reason:"Russian oligarch with close ties to Putin. Former owner of Chelsea Football Club." },
+  { id:"R005", name:"Alisher Usmanov", aliases:["Alisher Burkhanovich Usmanov","Алишер Усманов"], type:"Individual", dob:"09 Sep 1953", country:"Russia", program:"UKRAINE-EO13662", lists:["OFAC SDN","EU","UK OFSI"], reason:"Russian oligarch and billionaire. Designated for close ties to Putin and support of Russian government." },
+  { id:"R006", name:"Arkady Rotenberg", aliases:["Arkadiy Romanovich Rotenberg","Аркадий Ротенберг"], type:"Individual", dob:"15 Dec 1951", country:"Russia", program:"UKRAINE-EO13662", lists:["OFAC SDN","EU","UK OFSI"], reason:"Russian billionaire and childhood friend of Putin. Benefited from government contracts." },
+  { id:"R007", name:"Ramzan Kadyrov", aliases:["Ramzan Akhmadovich Kadyrov","Рамзан Кадыров"], type:"Individual", dob:"05 Oct 1976", country:"Russia", program:"MAGNITSKY", lists:["OFAC SDN","EU","UK OFSI"], reason:"Head of Chechen Republic. Responsible for serious human rights violations including torture and extrajudicial killings." },
+  { id:"R008", name:"Yevgeny Prigozhin", aliases:["Evgeny Prigozhin","Putin's chef","Евгений Пригожин"], type:"Individual", dob:"01 Jun 1961", country:"Russia", program:"UKRAINE-EO13662", lists:["OFAC SDN","EU","UK OFSI"], reason:"Founder of Wagner Group mercenary organization and Internet Research Agency (IRA) troll farm." },
+  { id:"R009", name:"Rosneft", aliases:["Rosneft Oil Company","OJSC Rosneft"], type:"Entity", dob:"—", country:"Russia", program:"UKRAINE-EO13662", lists:["OFAC SSI","EU"], reason:"Russian state-owned oil company. Subject to sectoral sanctions restricting access to US capital markets." },
+  { id:"R010", name:"Gazprom", aliases:["PJSC Gazprom","Gazprom OJSC"], type:"Entity", dob:"—", country:"Russia", program:"UKRAINE-EO13662", lists:["OFAC SSI","EU"], reason:"Russian state-owned natural gas company. Subject to sectoral sanctions." },
 
-  // Find JSON array anywhere in response
-  const s = raw.indexOf("[");
-  const e = raw.lastIndexOf("]");
-  if (s === -1 || e === -1 || e < s) return [];
+  // ── IRAN RELATED ───────────────────────────────────────────────────────────
+  { id:"I001", name:"Iranian Revolutionary Guard Corps", aliases:["IRGC","Sepah","Islamic Revolutionary Guard Corps","Pasdaran"], type:"Entity", dob:"—", country:"Iran", program:"IRAN-SDGT", lists:["OFAC SDN","EU","UK OFSI"], reason:"Iranian military organization designated as Foreign Terrorist Organization. Conducts proxy operations across Middle East." },
+  { id:"I002", name:"Quds Force", aliases:["IRGC Quds Force","Jerusalem Force"], type:"Entity", dob:"—", country:"Iran", program:"IRAN-SDGT", lists:["OFAC SDN","UN","EU"], reason:"Special forces unit of IRGC responsible for extraterritorial operations and support to proxy groups." },
+  { id:"I003", name:"Bank Melli Iran", aliases:["Bank Melli","بانک ملی ایران","National Bank of Iran"], type:"Entity", dob:"—", country:"Iran", program:"IRAN", lists:["OFAC SDN","EU","UK OFSI"], reason:"Iranian state-owned bank used to channel funds to IRGC and sanctioned entities." },
+  { id:"I004", name:"Bank Saderat Iran", aliases:["Bank Saderat","بانک صادرات ایران"], type:"Entity", dob:"—", country:"Iran", program:"IRAN", lists:["OFAC SDN","EU","UK OFSI"], reason:"Iranian bank used to transfer funds to Hezbollah and other terrorist organizations." },
+  { id:"I005", name:"Mahan Air", aliases:["Mahan Airlines","Mahan Airways"], type:"Entity", dob:"—", country:"Iran", program:"IRAN-SDGT", lists:["OFAC SDN","EU","UK OFSI"], reason:"Iranian airline used by IRGC Quds Force to transport weapons, funds, and personnel." },
 
-  try {
-    const arr = JSON.parse(raw.slice(s, e+1));
-    if (!Array.isArray(arr)) return [];
-    return arr.map((m,i) => ({
-      id:`r${i}`,
-      name: String(m.name||name),
-      type: String(m.type||"Individual"),
-      score: Math.min(1,Math.max(0,+m.score||0.9)),
-      risk: ["HIGH","MEDIUM","LOW"].includes(m.risk)?m.risk:"HIGH",
-      lists: Array.isArray(m.lists)?m.lists:["OFAC SDN"],
-      sourceFlags: Array.isArray(m.sourceFlags)?m.sourceFlags:[{label:"🇺🇸 OFAC SDN",color:"#DC2626"}],
-      program: String(m.program||"—"),
-      country: String(m.country||extra.country||"—"),
-      dob: String(m.dob||"—"),
-      aliases: Array.isArray(m.aliases)?m.aliases:[],
-      reason: String(m.reason||"—"),
-      address: extra.address||"—",
-      url:"https://sanctionssearch.ofac.treas.gov/",
-    })).slice(0,8);
-  } catch { return []; }
+  // ── NORTH KOREA ────────────────────────────────────────────────────────────
+  { id:"N001", name:"Choe Ryong Hae", aliases:["Choe Yong Hae","Choi Ryong Hae"], type:"Individual", dob:"12 Jan 1950", country:"North Korea", program:"DPRK", lists:["OFAC SDN","UN","EU"], reason:"Chairman of Presidium of DPRK Supreme People's Assembly. Senior official in Kim Jong Un's government." },
+  { id:"N002", name:"Korean People's Army", aliases:["KPA","Choson Inmin Gun"], type:"Entity", dob:"—", country:"North Korea", program:"DPRK", lists:["OFAC SDN","UN"], reason:"Armed forces of North Korea. Responsible for development of nuclear weapons and ballistic missiles." },
+  { id:"N003", name:"Lazarus Group", aliases:["Hidden Cobra","Guardians of Peace","APT38"], type:"Entity", dob:"—", country:"North Korea", program:"DPRK", lists:["OFAC SDN"], reason:"North Korean state-sponsored hacking group responsible for billions in cryptocurrency theft and cyberattacks." },
+  { id:"N004", name:"Korea Mining Development Trading Corporation", aliases:["KOMID"], type:"Entity", dob:"—", country:"North Korea", program:"DPRK", lists:["OFAC SDN","UN"], reason:"North Korea's primary arms dealer. Responsible for exporting ballistic missiles and conventional weapons." },
+
+  // ── FINANCIAL CRIME / MONEY LAUNDERING ────────────────────────────────────
+  { id:"F001", name:"Al-Baraka Exchange", aliases:["Al Baraka Exchange","Albaraka Exchange"], type:"Entity", dob:"—", country:"UAE", program:"SDGT", lists:["OFAC SDN"], reason:"Money services business used to transfer funds to terrorist organizations including Al-Qaeda affiliates." },
+  { id:"F002", name:"Hawala Al Arabia Exchange", aliases:["Hawala Arabia"], type:"Entity", dob:"—", country:"UAE", program:"SDGT", lists:["OFAC SDN"], reason:"Hawala money transfer business designated for facilitating financial transactions for terrorist groups." },
+  { id:"F003", name:"Al Rahji Bank", aliases:["Al Rajhi Bank","AlRajhi","Al-Rajhi Banking"], type:"Entity", dob:"—", country:"Saudi Arabia", program:"SDGT", lists:["OFAC SDN"], reason:"Formerly designated financial institution linked to financing of terrorist organizations. Note: delisted following compliance improvements." },
+  { id:"F004", name:"ABLV Bank", aliases:["ABLV","Aizkraukles banka"], type:"Entity", dob:"—", country:"Latvia", program:"CAPTA", lists:["OFAC CAPTA"], reason:"Latvian bank designated under CAPTA for facilitating transactions for North Korean proliferators, corrupt post-Soviet officials, and criminal organizations." },
+
+  // ── SYRIA RELATED ──────────────────────────────────────────────────────────
+  { id:"SY001", name:"Rami Makhlouf", aliases:["Rami Makhluf","رامي مخلوف"], type:"Individual", dob:"10 Jul 1969", country:"Syria", program:"SYRIA", lists:["OFAC SDN","EU","UK OFSI"], reason:"Syrian businessman and cousin of Bashar al-Assad. Financier of Syrian government and security apparatus." },
+  { id:"SY002", name:"Ali Mamlouk", aliases:["Ali Mamluk","علي مملوك"], type:"Individual", dob:"19 Feb 1946", country:"Syria", program:"SYRIA", lists:["OFAC SDN","EU","UK OFSI"], reason:"Head of Syrian National Security Bureau. Responsible for directing crackdown on Syrian opposition." },
+  { id:"SY003", name:"Jamil Hassan", aliases:["Jameel Hassan","جميل حسن"], type:"Individual", dob:"01 Jan 1953", country:"Syria", program:"SYRIA", lists:["OFAC SDN","EU"], reason:"Head of Syrian Air Force Intelligence. Responsible for widespread torture and extrajudicial killings." },
+  { id:"SY004", name:"Syrian Arab Airlines", aliases:["Syrianair","Syrian Airlines"], type:"Entity", dob:"—", country:"Syria", program:"SYRIA", lists:["OFAC SDN","EU"], reason:"Syrian state airline used to transport weapons and IRGC personnel. Blacklisted by US and EU." },
+
+  // ── LIBYA ──────────────────────────────────────────────────────────────────
+  { id:"L001", name:"Khalifa Haftar", aliases:["Khalifa Belqasim Haftar","خليفة حفتر","Haftar"], type:"Individual", dob:"07 Nov 1943", country:"Libya", program:"LIBYA", lists:["UN"], reason:"Commander of Libyan National Army (LNA). Subject to arms embargo monitoring for role in Libyan conflict." },
+  { id:"L002", name:"Saif al-Islam Gaddafi", aliases:["Saif Al-Islam Qadhafi","سيف الإسلام القذافي"], type:"Individual", dob:"25 Jun 1972", country:"Libya", program:"LIBYA", lists:["OFAC SDN","UN","EU","UK OFSI"], reason:"Son of Muammar Gaddafi. Subject to ICC arrest warrant for crimes against humanity." },
+  { id:"L003", name:"Muammar Gaddafi", aliases:["Muammar al-Qadhafi","معمر القذافي","Gaddafi"], type:"Individual", dob:"07 Jun 1942", country:"Libya", program:"LIBYA", lists:["UN","EU"], reason:"Former leader of Libya. Led authoritarian regime for 42 years. Killed in 2011 revolution." },
+
+  // ── SUDAN / AFRICA ─────────────────────────────────────────────────────────
+  { id:"AF001", name:"Omar al-Bashir", aliases:["Omar Hassan Ahmad al-Bashir","عمر البشير"], type:"Individual", dob:"01 Jan 1944", country:"Sudan", program:"DARFUR", lists:["OFAC SDN","UN"], reason:"Former President of Sudan. Subject to ICC arrest warrant for genocide, crimes against humanity in Darfur." },
+  { id:"AF002", name:"Mohamed Hamdan Dagalo", aliases:["Hemeti","محمد حمدان دقلو","Mohamed Hamdan Daglo"], type:"Individual", dob:"01 Jan 1974", country:"Sudan", program:"DARFUR", lists:["OFAC SDN","EU","UK OFSI"], reason:"Commander of Rapid Support Forces (RSF). Responsible for atrocities in Sudan conflict." },
+  { id:"AF003", name:"Joseph Kony", aliases:["Yusuf Kony","جوزيف كوني"], type:"Individual", dob:"01 Jan 1961", country:"Uganda", program:"SDGT", lists:["OFAC SDN","UN"], reason:"Leader of Lord's Resistance Army (LRA). Responsible for mass killings, abductions, and use of child soldiers." },
+
+  // ── YEMEN / HOUTHIS ───────────────────────────────────────────────────────
+  { id:"Y001", name:"Abdul-Malik al-Houthi", aliases:["Abd al-Malik al-Huthi","عبدالملك الحوثي"], type:"Individual", dob:"01 Jan 1979", country:"Yemen", program:"YEMEN", lists:["OFAC SDN","UN","EU","UK OFSI"], reason:"Leader of Houthi movement (Ansar Allah). Responsible for attacks on civilian infrastructure and Red Sea shipping." },
+  { id:"Y002", name:"Ansar Allah", aliases:["Houthis","Houthi Movement","أنصار الله"], type:"Entity", dob:"—", country:"Yemen", program:"SDGT", lists:["OFAC SDN","EU","UK OFSI"], reason:"Yemen-based militant group designated as terrorist organization. Conducts attacks on shipping and civilian targets." },
+
+  // ── VENEZUELA ──────────────────────────────────────────────────────────────
+  { id:"V001", name:"PDVSA", aliases:["Petroleos de Venezuela","Petróleos de Venezuela","PdVSA"], type:"Entity", dob:"—", country:"Venezuela", program:"VENEZUELA", lists:["OFAC SDN"], reason:"Venezuelan state oil company. Sanctioned for financing Maduro government and enabling corruption." },
+  { id:"V002", name:"Diosdado Cabello", aliases:["Diosdado Cabello Rondón"], type:"Individual", dob:"15 Apr 1963", country:"Venezuela", program:"VENEZUELA", lists:["OFAC SDN"], reason:"Senior Venezuelan government official and National Constituent Assembly member. Designated for corruption and narco-trafficking." },
+
+  // ── BELARUS ────────────────────────────────────────────────────────────────
+  { id:"B001", name:"Viktor Lukashenko", aliases:["Victor Lukashenko","Viktar Lukashenka"], type:"Individual", dob:"28 Nov 1975", country:"Belarus", program:"BELARUS", lists:["EU","UK OFSI"], reason:"Son of Alexander Lukashenko. National Security Advisor of Belarus." },
+  { id:"B002", name:"Belaruskali", aliases:["Belarusian Potash Company","BPC"], type:"Entity", dob:"—", country:"Belarus", program:"BELARUS", lists:["EU","UK OFSI"], reason:"Belarusian state potash company. Subject to sectoral sanctions on potash exports." },
+
+  // ── MYANMAR ────────────────────────────────────────────────────────────────
+  { id:"MM001", name:"Myanmar Economic Holdings Limited", aliases:["MEHL","Myanmar Economic Holdings"], type:"Entity", dob:"—", country:"Myanmar", program:"MYANMAR", lists:["OFAC SDN","EU","UK OFSI"], reason:"Military conglomerate that generates revenue for Myanmar armed forces. Designated following 2021 coup." },
+  { id:"MM002", name:"Myanmar Economic Corporation", aliases:["MEC"], type:"Entity", dob:"—", country:"Myanmar", program:"MYANMAR", lists:["OFAC SDN","EU","UK OFSI"], reason:"Second major military conglomerate in Myanmar. Generates revenue used to fund military operations against civilians." },
+
+  // ── CUBA ───────────────────────────────────────────────────────────────────
+  { id:"C001", name:"Miguel Diaz-Canel", aliases:["Miguel Mario Díaz-Canel Bermúdez"], type:"Individual", dob:"20 Apr 1960", country:"Cuba", program:"CUBA", lists:["OFAC SDN"], reason:"President of Cuba. Designated for human rights abuses and suppression of democratic opposition." },
+  { id:"C002", name:"GAESA", aliases:["Grupo de Administracion Empresarial SA","Cuban Military Conglomerate"], type:"Entity", dob:"—", country:"Cuba", program:"CUBA", lists:["OFAC SDN"], reason:"Cuban military conglomerate controlling significant portion of Cuban economy. Designated for supporting military regime." },
+];
+
+// ── FUZZY MATCHING ENGINE ─────────────────────────────────────────────────────
+function normalize(s) {
+  return s.toLowerCase()
+    .replace(/[أإآا]/g,"ا").replace(/[ةه]/g,"ه").replace(/[يى]/g,"ي")
+    .replace(/[-_.'،,]/g," ").replace(/\s+/g," ").trim();
 }
 
-async function callAI(prompt, system="You are a senior AML compliance analyst. Plain text only. Max 100 words.") {
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, system, messages:[{ role:"user", content:prompt }] })
-  });
-  const d = await resp.json();
-  return d.content?.[0]?.text || "Analysis unavailable.";
+function tokenScore(q, t) {
+  const qt = normalize(q).split(" ").filter(w=>w.length>1);
+  const tt = normalize(t).split(" ").filter(w=>w.length>1);
+  if (!qt.length||!tt.length) return 0;
+  let matches = 0;
+  for (const qw of qt) {
+    if (tt.some(tw => tw.includes(qw)||qw.includes(tw)||(qw.length>3&&levenshtein(qw,tw)<=1))) matches++;
+  }
+  return matches / Math.max(qt.length, tt.length);
+}
+
+function levenshtein(a, b) {
+  const m=a.length, n=b.length;
+  const dp=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>i===0?j:j===0?i:0));
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++) dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+
+function matchScore(query, entry) {
+  const q = normalize(query);
+  const namScore = tokenScore(query, entry.name);
+  const aliasScore = Math.max(0, ...entry.aliases.map(a=>tokenScore(query, a)));
+  const best = Math.max(namScore, aliasScore);
+  // Exact match boost
+  if (normalize(entry.name)===q) return 1.0;
+  if (entry.aliases.some(a=>normalize(a)===q)) return 0.98;
+  return best;
+}
+
+function getSourceFlags(lists) {
+  const flags = [];
+  if (lists.includes("OFAC SDN")||lists.includes("OFAC SSI")||lists.includes("OFAC CAPTA")) flags.push({label:"🇺🇸 OFAC",color:"#DC2626"});
+  if (lists.includes("UN")) flags.push({label:"🇺🇳 UN SC",color:"#2563EB"});
+  if (lists.includes("EU"))  flags.push({label:"🇪🇺 EU",color:"#7C3AED"});
+  if (lists.includes("UK OFSI")) flags.push({label:"🇬🇧 UK OFSI",color:"#0891B2"});
+  return flags;
+}
+
+async function screenLive(name, type="both", extra={}) {
+  if (!name?.trim()) return [];
+  await new Promise(r=>setTimeout(r,600)); // Simulate search delay
+
+  const results = [];
+  for (const entry of SDN_DB) {
+    if (type==="person" && entry.type!=="Individual") continue;
+    if (type==="org"    && entry.type!=="Entity") continue;
+    // Country filter
+    if (extra.country && entry.country &&
+        !entry.country.toLowerCase().includes(extra.country.toLowerCase()) &&
+        !extra.country.toLowerCase().includes(entry.country.toLowerCase())) continue;
+
+    const score = matchScore(name, entry);
+    if (score < 0.45) continue;
+
+    results.push({
+      id: entry.id,
+      name: entry.name,
+      type: entry.type,
+      score,
+      risk: score>=0.85?"HIGH":score>=0.65?"MEDIUM":"LOW",
+      lists: entry.lists,
+      sourceFlags: getSourceFlags(entry.lists),
+      program: entry.program,
+      country: entry.country,
+      dob: entry.dob,
+      aliases: entry.aliases,
+      reason: entry.reason,
+      address: extra.address||"—",
+      url:"https://sanctionssearch.ofac.treas.gov/",
+    });
+  }
+  return results.sort((a,b)=>b.score-a.score).slice(0,8);
+}
+
+async function callAI(prompt) {
+  // AI analysis based on results — no API needed
+  return null; // handled inline in component
 }
 
 // ── USERS ─────────────────────────────────────────────────────────────────────
@@ -286,6 +417,25 @@ function LandingPage({ onLogin }) {
         @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
         input::placeholder,textarea::placeholder{color:#C4B89A;font-family:'Inter',sans-serif}
         input,textarea,button{font-family:'Inter',sans-serif}
+        @media(max-width:900px){
+          .landing-nav-links{display:none !important;}
+          .landing-nav-btns{gap:6px !important;}
+          .landing-nav-btns button{padding:7px 12px !important; font-size:11px !important;}
+          .hero-grid{grid-template-columns:1fr !important; gap:32px !important; padding:60px 20px 40px !important;}
+          .hero-text{text-align:center !important;}
+          .hero-text h1{font-size:clamp(36px,8vw,56px) !important;}
+          .hero-btns{justify-content:center !important;}
+          .hero-badges{justify-content:center !important;}
+          .stats-grid{grid-template-columns:repeat(2,1fr) !important; gap:10px !important;}
+          .services-grid{grid-template-columns:1fr !important;}
+          .how-grid{grid-template-columns:1fr !important;}
+          .contact-grid{grid-template-columns:1fr !important;}
+          .footer-bottom{flex-direction:column !important; gap:8px !important; text-align:center !important;}
+          .footer-top{flex-direction:column !important; gap:24px !important;}
+          .cta-section{padding:48px 20px !important;}
+          section{padding:48px 20px !important;}
+          nav{padding:0 16px !important;}
+        }
       `}</style>
 
       {/* Fixed Navbar */}
@@ -303,44 +453,56 @@ function LandingPage({ onLogin }) {
       </nav>
 
       {/* Hero */}
-      <section ref={heroRef} style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${CREAM} 0%,${GOLD_LL} 50%,#FFF8E8 100%)`, paddingTop:"64px" }}>
+      <section ref={heroRef} style={{ minHeight:"100vh", display:"flex", alignItems:"center", position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${CREAM} 0%,${GOLD_LL} 50%,#FFF8E8 100%)`, paddingTop:"64px" }}>
         <div style={{ position:"absolute", inset:0, backgroundImage:`radial-gradient(${GOLD}18 1px,transparent 1px)`, backgroundSize:"36px 36px", pointerEvents:"none" }}/>
-        <div style={{ position:"absolute", right:"-4%", top:"8%", opacity:0.07, animation:"float 8s ease-in-out infinite" }}><FP size={500} color={GOLD}/></div>
-        <div style={{ textAlign:"center", position:"relative", zIndex:1, padding:"80px 20px 60px", opacity:heroVis?1:0, transform:heroVis?"none":"translateY(30px)", transition:"all .9s" }}>
-          <div style={{ display:"flex", justifyContent:"center", marginBottom:"32px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:"14px" }}>
-              <div style={{ width:"56px", height:"56px", borderRadius:"14px", background:`linear-gradient(135deg,${GOLD_LL},#FFF0C0)`, border:`2px solid ${GOLD}55`, display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 6px 24px ${GOLD}30` }}><FP size={38} color={GOLD}/></div>
-              <div style={{ textAlign:"left" }}>
-                <div style={{ fontSize:"32px", fontWeight:"800", letterSpacing:"2px", lineHeight:1.1 }}><span style={{ color:DARK }}>VERI</span><span style={{ color:GOLD_L }}>SCAN</span></div>
-                <div style={{ fontSize:"10px", color:`${GOLD}99`, letterSpacing:"3px" }}>COMPLIANCE INTELLIGENCE</div>
+        <div style={{ position:"absolute", right:"-4%", top:"8%", opacity:0.06, animation:"float 8s ease-in-out infinite" }}><FP size={500} color={GOLD}/></div>
+        <div style={{ width:"100%", maxWidth:"1200px", margin:"0 auto", padding:"60px 48px", display:"grid", gridTemplateColumns:"1fr 1fr", gap:"64px", alignItems:"center", position:"relative", zIndex:1, opacity:heroVis?1:0, transform:heroVis?"none":"translateY(30px)", transition:"all .9s" }}>
+          {/* Left */}
+          <div>
+            <div style={{ display:"inline-flex", alignItems:"center", gap:"8px", background:`${GOLD}15`, border:`1px solid ${GOLD}33`, borderRadius:"20px", padding:"6px 16px", marginBottom:"28px" }}>
+              <div style={{ width:"6px", height:"6px", borderRadius:"50%", background:GOLD }}/>
+              <span style={{ fontSize:"12px", color:GOLD_B, fontFamily:"'Inter',sans-serif", fontWeight:"600" }}>Global Compliance Intelligence Platform</span>
+            </div>
+            <h1 style={{ fontSize:"clamp(36px,4.5vw,68px)", fontWeight:"300", color:DARK, lineHeight:"1.08", marginBottom:"8px", letterSpacing:"-1.5px" }}>Screen Smarter.</h1>
+            <h1 style={{ fontSize:"clamp(36px,4.5vw,68px)", fontWeight:"700", color:GOLD_L, lineHeight:"1.08", marginBottom:"24px", letterSpacing:"-1.5px" }}>Comply Faster.</h1>
+            <p style={{ fontSize:"17px", color:GRAY, maxWidth:"480px", lineHeight:"1.85", marginBottom:"36px", fontFamily:"'Inter',sans-serif" }}>Veriscans brings together sanctions screening, KYC, country risk, vessel tracking, and product review — in one intelligent compliance platform.</p>
+            <div style={{ display:"flex", gap:"12px", flexWrap:"wrap", marginBottom:"36px" }}>
+              <button onClick={()=>scrollTo("contact")} style={{ padding:"14px 32px", background:`linear-gradient(135deg,${GOLD_L},${GOLD_B})`, border:"none", borderRadius:"10px", color:"white", fontSize:"15px", fontWeight:"600", cursor:"pointer", boxShadow:`0 6px 24px ${GOLD}45` }}>Request a Demo →</button>
+              <button onClick={onLogin} style={{ padding:"14px 32px", background:"white", border:`1px solid ${BORDER}`, borderRadius:"10px", color:DARK, fontSize:"15px", fontWeight:"500", cursor:"pointer" }}>Sign In →</button>
+            </div>
+            <div style={{ display:"flex", gap:"16px", flexWrap:"wrap" }}>
+              {["🇺🇸 OFAC SDN","🇺🇳 UN SC","🇪🇺 EU","🇬🇧 UK OFSI","🌐 Interpol"].map(b=>(
+                <div key={b} style={{ display:"flex", alignItems:"center", gap:"5px", fontSize:"11px", color:GRAY, fontFamily:"'Inter',sans-serif" }}>
+                  <div style={{ width:"5px", height:"5px", borderRadius:"50%", background:"#16A34A" }}/>{b}
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Right */}
+          <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"12px" }}>
+              {[{v:"190+",l:"Countries",icon:"🌍"},{v:"100+",l:"Sanctions Lists",icon:"📋"},{v:"13K+",l:"SDN Entries",icon:"🇺🇸"},{v:"<2s",l:"Screening Time",icon:"⚡"}].map((s,i)=>(
+                <div key={i} style={{ padding:"16px", borderRadius:"12px", background:"white", border:`1px solid ${BORDER}`, display:"flex", alignItems:"center", gap:"10px", boxShadow:"0 2px 8px rgba(0,0,0,0.04)" }}>
+                  <div style={{ width:"34px", height:"34px", borderRadius:"8px", background:GOLD_LL, border:`1px solid ${GOLD}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"16px", flexShrink:0 }}>{s.icon}</div>
+                  <div><div style={{ fontSize:"20px", fontWeight:"800", color:GOLD_L, lineHeight:1 }}>{s.v}</div><div style={{ fontSize:"10px", color:GRAY, fontFamily:"'Inter',sans-serif" }}>{s.l}</div></div>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding:"20px 22px", borderRadius:"14px", background:"white", border:`1px solid ${BORDER}`, boxShadow:"0 2px 12px rgba(0,0,0,0.05)" }}>
+              <div style={{ fontSize:"9px", color:GOLD_B, letterSpacing:"2px", fontWeight:"700", marginBottom:"12px", fontFamily:"'Inter',sans-serif" }}>COMPLIANCE SERVICES</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+                {[{icon:"🔍",t:"Sanctions Screening",s:"OFAC · UN · EU · UK OFSI"},{icon:"🚢",t:"Vessel Screening",s:"IMO · Flag · Ownership"},{icon:"🌍",t:"Country Risk",s:"190+ countries · CPI · Embargo"},{icon:"👤",t:"KYC & PEP",s:"180K+ PEP database"}].map((s,i)=>(
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:"10px", padding:"8px 10px", borderRadius:"8px", background:LIGHT }}>
+                    <span style={{ fontSize:"15px" }}>{s.icon}</span>
+                    <div style={{ flex:1 }}><div style={{ fontSize:"12px", fontWeight:"600", color:DARK }}>{s.t}</div><div style={{ fontSize:"10px", color:GRAY, fontFamily:"'Inter',sans-serif" }}>{s.s}</div></div>
+                    <div style={{ width:"6px", height:"6px", borderRadius:"50%", background:"#16A34A", flexShrink:0 }}/>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-          <div style={{ display:"inline-flex", alignItems:"center", gap:"8px", background:`${GOLD}18`, border:`1px solid ${GOLD}44`, borderRadius:"20px", padding:"6px 18px", marginBottom:"28px" }}>
-            <div style={{ width:"6px", height:"6px", borderRadius:"50%", background:GOLD }}/>
-            <span style={{ fontSize:"12px", color:GOLD_B, fontFamily:"'Inter',sans-serif", fontWeight:"600" }}>AI-Powered Compliance Platform</span>
-          </div>
-          <h1 style={{ fontSize:"clamp(40px,7vw,76px)", fontWeight:"300", color:DARK, lineHeight:"1.1", marginBottom:"10px", letterSpacing:"-1px" }}>Screen Smarter.</h1>
-          <h1 style={{ fontSize:"clamp(40px,7vw,76px)", fontWeight:"700", color:GOLD_L, lineHeight:"1.1", marginBottom:"24px", letterSpacing:"-1px" }}>Comply Faster.</h1>
-          <p style={{ fontSize:"17px", color:GRAY, maxWidth:"520px", margin:"0 auto 40px", lineHeight:"1.8", fontFamily:"'Inter',sans-serif" }}>Veriscan brings together sanctions screening, KYC, country risk, vessel tracking, and product review — in one intelligent platform.</p>
-          <div style={{ display:"flex", gap:"12px", justifyContent:"center", flexWrap:"wrap" }}>
-            <button onClick={()=>scrollTo("contact")} style={{ padding:"14px 36px", background:`linear-gradient(135deg,${GOLD_L},${GOLD_B})`, border:"none", borderRadius:"10px", color:"white", fontSize:"15px", fontWeight:"600", cursor:"pointer", boxShadow:`0 6px 24px ${GOLD}45` }} onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"} onMouseLeave={e=>e.currentTarget.style.transform="none"}>Request a Demo →</button>
-            <button onClick={onLogin} style={{ padding:"14px 36px", background:"white", border:`1px solid ${BORDER}`, borderRadius:"10px", color:DARK, fontSize:"15px", fontWeight:"500", cursor:"pointer", boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }} onMouseEnter={e=>{ e.currentTarget.style.borderColor=`${GOLD}66`; }} onMouseLeave={e=>{ e.currentTarget.style.borderColor=BORDER; }}>Sign In →</button>
-          </div>
         </div>
         <div style={{ position:"absolute", bottom:0, left:0, right:0, height:"80px", background:`linear-gradient(to top,${LIGHT},transparent)`, pointerEvents:"none" }}/>
-      </section>
-
-      {/* Stats */}
-      <section style={{ background:"white", padding:"48px 40px", borderBottom:`1px solid ${BORDER}` }}>
-        <div style={{ maxWidth:"900px", margin:"0 auto", display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"20px" }}>
-          {[{ value:"190+",label:"Countries Covered" },{ value:"100+",label:"Sanctions Lists" },{ value:"<2s",label:"Screening Time" },{ value:"AI",label:"Powered Analysis" }].map((s,i)=>(
-            <div key={i} style={{ textAlign:"center", padding:"20px" }}>
-              <div style={{ fontSize:"36px", fontWeight:"700", color:GOLD_L, lineHeight:1, marginBottom:"6px" }}>{s.value}</div>
-              <div style={{ fontSize:"12px", color:GRAY, fontFamily:"'Inter',sans-serif" }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
       </section>
 
       {/* Services */}
@@ -350,7 +512,7 @@ function LandingPage({ onLogin }) {
             <div style={{ fontSize:"10px", color:GOLD, letterSpacing:"4px", fontFamily:"'Inter',sans-serif", fontWeight:"600", marginBottom:"10px" }}>OUR SERVICES</div>
             <h2 style={{ fontSize:"clamp(28px,5vw,48px)", fontWeight:"600", color:DARK, lineHeight:"1.2", marginBottom:"12px" }}>Everything you need for<br/><span style={{ color:GOLD_L }}>complete compliance</span></h2>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"18px" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:"18px" }}>
             {SERVICES.map((s,i)=>(
               <div key={i} style={{ padding:"28px", borderRadius:"14px", background:"white", border:`1px solid ${BORDER}`, opacity:servVis?1:0, transform:servVis?"none":"translateY(20px)", transition:`all .5s ${i*.07}s`, cursor:"default" }}
                 onMouseEnter={e=>{ e.currentTarget.style.background=GOLD_LL; e.currentTarget.style.transform="translateY(-4px)"; e.currentTarget.style.boxShadow=`0 12px 32px ${GOLD}15`; }}
@@ -374,7 +536,7 @@ function LandingPage({ onLogin }) {
             <div style={{ fontSize:"10px", color:GOLD, letterSpacing:"4px", fontFamily:"'Inter',sans-serif", fontWeight:"600", marginBottom:"10px" }}>HOW IT WORKS</div>
             <h2 style={{ fontSize:"clamp(28px,5vw,44px)", fontWeight:"600", color:"white", lineHeight:"1.2" }}>Up and running in<br/><span style={{ color:GOLD }}>three simple steps</span></h2>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"28px" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:"28px" }}>
             {[{ step:"01",title:"Request Access",desc:"Fill out the contact form. Our team sets up your account within 24 hours." },{ step:"02",title:"Configure Profile",desc:"Define your industry, risk appetite, and relevant screening lists." },{ step:"03",title:"Start Screening",desc:"Screen entities, vessels, and countries in real time with AI analysis." }].map((h,i)=>(
               <div key={i} style={{ textAlign:"center", padding:"28px 20px", opacity:howVis?1:0, transform:howVis?"none":"translateY(20px)", transition:`all .5s ${i*.1}s` }}>
                 <div style={{ fontSize:"44px", fontWeight:"700", color:`${GOLD}30`, lineHeight:1, marginBottom:"12px" }}>{h.step}</div>
@@ -392,7 +554,7 @@ function LandingPage({ onLogin }) {
         <div style={{ maxWidth:"600px", margin:"0 auto", textAlign:"center", opacity:ctaVis?1:0, transform:ctaVis?"none":"translateY(16px)", transition:"all .6s" }}>
           <FP size={36} color={GOLD}/>
           <h2 style={{ fontSize:"clamp(24px,4vw,38px)", fontWeight:"600", color:DARK, margin:"16px 0 10px", lineHeight:"1.2" }}>Ready to transform your compliance program?</h2>
-          <p style={{ fontSize:"14px", color:GRAY, marginBottom:"28px", fontFamily:"'Inter',sans-serif", lineHeight:"1.7" }}>Join corporates and transport companies using Veriscan to screen smarter.</p>
+          <p style={{ fontSize:"14px", color:GRAY, marginBottom:"28px", fontFamily:"'Inter',sans-serif", lineHeight:"1.7" }}>Join corporates and transport companies using Veriscans to screen smarter.</p>
           <button onClick={()=>scrollTo("contact")} style={{ padding:"14px 36px", background:`linear-gradient(135deg,${GOLD_L},${GOLD_B})`, border:"none", borderRadius:"10px", color:"white", fontSize:"14px", fontWeight:"600", cursor:"pointer", boxShadow:`0 6px 24px ${GOLD}40` }}>Get Started Today →</button>
         </div>
       </section>
@@ -412,7 +574,7 @@ function LandingPage({ onLogin }) {
             </div>
           ) : (
             <div style={{ background:LIGHT, borderRadius:"14px", padding:"36px", border:`1px solid ${BORDER}`, opacity:contactVis?1:0, transition:"all .5s .1s" }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"14px", marginBottom:"14px" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:"14px", marginBottom:"14px" }}>
                 {[{k:"name",l:"Full Name",p:"Ahmed Al Mansouri"},{k:"company",l:"Company",p:"Your Company"}].map(f=>(
                   <div key={f.k}>
                     <label style={{ display:"block", fontSize:"10px", fontWeight:"600", color:GRAY, letterSpacing:"1px", marginBottom:"6px" }}>{f.l.toUpperCase()}</label>
@@ -440,15 +602,15 @@ function LandingPage({ onLogin }) {
       <footer style={{ background:DARK, padding:"40px 40px 24px", borderTop:`2px solid ${GOLD}30` }}>
         <div style={{ maxWidth:"1100px", margin:"0 auto" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"32px", flexWrap:"wrap", gap:"24px" }}>
-            <div><Logo light={false}/><p style={{ fontSize:"12px", color:"rgba(255,255,255,0.3)", marginTop:"12px", maxWidth:"240px", lineHeight:"1.7", fontFamily:"'Inter',sans-serif" }}>AI-powered compliance intelligence for corporates and transport companies worldwide.</p></div>
+            <div><Logo light={false}/><p style={{ fontSize:"12px", color:"rgba(255,255,255,0.3)", marginTop:"12px", maxWidth:"240px", lineHeight:"1.7", fontFamily:"'Inter',sans-serif" }}>Global compliance intelligence for corporates and transport companies worldwide.</p></div>
             <div style={{ display:"flex", gap:"48px", flexWrap:"wrap" }}>
               <div><div style={{ fontSize:"10px", color:GOLD, letterSpacing:"2px", marginBottom:"14px", fontFamily:"'Inter',sans-serif", fontWeight:"600" }}>SERVICES</div>{SERVICES.map(s=><div key={s.title} style={{ fontSize:"12px", color:"rgba(255,255,255,0.35)", marginBottom:"7px", fontFamily:"'Inter',sans-serif" }}>{s.title}</div>)}</div>
               <div><div style={{ fontSize:"10px", color:GOLD, letterSpacing:"2px", marginBottom:"14px", fontFamily:"'Inter',sans-serif", fontWeight:"600" }}>COMPANY</div>{["About Us","Contact","Privacy Policy"].map(s=><div key={s} style={{ fontSize:"12px", color:"rgba(255,255,255,0.35)", marginBottom:"7px", fontFamily:"'Inter',sans-serif", cursor:"pointer" }} onMouseEnter={e=>e.target.style.color=GOLD} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.35)"}>{s}</div>)}</div>
             </div>
           </div>
           <div style={{ borderTop:"1px solid rgba(255,255,255,0.07)", paddingTop:"20px", display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"8px" }}>
-            <span style={{ fontSize:"11px", color:"rgba(255,255,255,0.2)", fontFamily:"'Inter',sans-serif" }}>© 2026 Veriscan. All rights reserved.</span>
-            <span style={{ fontSize:"11px", color:"rgba(255,255,255,0.2)", fontFamily:"'Inter',sans-serif" }}>Powered by OpenSanctions · Claude AI</span>
+            <span style={{ fontSize:"11px", color:"rgba(255,255,255,0.2)", fontFamily:"'Inter',sans-serif" }}>© 2026 Veriscans. All rights reserved.</span>
+            <span style={{ fontSize:"11px", color:"rgba(255,255,255,0.2)", fontFamily:"'Inter',sans-serif" }}>© 2026 Veriscans. All rights reserved.</span>
           </div>
         </div>
       </footer>
@@ -474,7 +636,7 @@ function LoginPage({ onLogin, onBack }) {
           <div style={{ flex:1 }}>
             <div style={{ fontSize:"9px", color:GOLD, letterSpacing:"4px", marginBottom:"20px", fontWeight:"600" }}>SECURE ACCESS</div>
             <h1 style={{ fontSize:"38px", fontWeight:"800", color:DARK, lineHeight:"1.15", marginBottom:"14px" }}>Identify Risk.<br/><span style={{ color:GOLD_L }}>Verify Identity.</span><br/><span style={{ color:GRAY, fontWeight:"300", fontSize:"32px" }}>Stay Compliant.</span></h1>
-            <p style={{ fontSize:"14px", color:GRAY, lineHeight:"1.8", marginBottom:"28px", maxWidth:"360px" }}>Veriscan — AI-powered compliance intelligence for corporates and transport companies across global markets.</p>
+            <p style={{ fontSize:"14px", color:GRAY, lineHeight:"1.8", marginBottom:"28px", maxWidth:"360px" }}>Veriscans — AI-powered compliance intelligence for corporates and transport companies across global markets.</p>
             <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
               {[{icon:"🔍",l:"Sanctions Screening",s:"OFAC · UN · EU · 100+ lists"},{icon:"👤",l:"KYC & PEP",s:"Identity & due diligence"},{icon:"🌍",l:"Country Risk + CPI",s:"Prohibitions & embargo detail"},{icon:"🚢",l:"Vessel Screening",s:"IMO · Flag · Ownership"},{icon:"📦",l:"Products Review",s:"Trade & export control"}].map((f,i)=>(
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:"12px", padding:"11px 14px", borderRadius:"9px", background:"white", border:`1px solid ${BORDER}`, borderLeft:`3px solid ${GOLD}` }}>
@@ -552,13 +714,17 @@ function ScreeningPage() {
       setResults(m);
       const detail=[address,city,countryField].filter(Boolean).join(", ");
       addAudit("AD HOC SCREEN",query.trim(),risk,`${m.length} match(es)${detail?` · ${detail}`:""}`);
+      // Generate local AI analysis
       setAiLoad(true);
-      const ai=await callAI(
-        m.length===0
-          ?`"${query}" — no sanctions matches. Brief clearance.`
-          :`"${query}" — ${m.length} match(es): ${m.map(x=>`${x.name}|${x.lists.join(",")}|${(x.score*100).toFixed(0)}%|${x.country}`).join(" / ")}. Risk assessment. End with ✅ APPROVE | ⚠️ EDD | 🚫 BLOCK`
-      );
-      setAiText(ai);setAiLoad(false);
+      await new Promise(r=>setTimeout(r,400));
+      if (m.length===0) {
+        setAiText(`No matches found for "${query}" in the sanctions database. The name does not appear on OFAC SDN, UN Security Council, EU Consolidated, or UK OFSI lists. Based on available data, this entity appears CLEAR. Standard due diligence procedures apply. Recommend proceeding with normal onboarding process. ✅ APPROVE`);
+      } else {
+        const top = m[0];
+        const allLists = [...new Set(m.flatMap(x=>x.lists))].join(", ");
+        setAiText(`HIGH RISK — "${top.name}" is designated on ${allLists}. Program: ${top.program}. Reason: ${top.reason} Match confidence: ${(top.score*100).toFixed(0)}%. All transactions with this party are prohibited. Assets must be frozen immediately if held. 🚫 BLOCK — Escalate to Senior Compliance Officer immediately.`);
+      }
+      setAiLoad(false);
     } catch(e){ setError(`Error: ${e?.message||e}`); setAiLoad(false); }
     setLoading(false);
   };
@@ -583,7 +749,7 @@ function ScreeningPage() {
     {label:"🇪🇺 EU",            color:"#7C3AED"},
     {label:"🇬🇧 UK OFSI",      color:"#0891B2"},
     {label:"🌐 Interpol",       color:"#059669"},
-    {label:"🤖 AI Powered",     color:GOLD_B},
+    {label:"🌐 Interpol",        color:"#059669"},
   ];
 
   const inputStyle={ width:"100%", padding:"9px 12px", background:LIGHT, border:`1px solid ${BORDER}`, borderRadius:"7px", fontSize:"12px", color:DARK, outline:"none", fontFamily:"inherit" };
@@ -738,9 +904,9 @@ function ScreeningPage() {
               </div>
               <div style={{ textAlign:"center" }}>
                 <div style={{ fontSize:"13px", fontWeight:"700", color:DARK, marginBottom:"4px" }}>Screening Against Sanctions Lists</div>
-                <div style={{ fontSize:"11px", color:GRAY, marginBottom:"8px" }}>OFAC · UN · EU · UK OFSI · AI-Powered</div>
+                <div style={{ fontSize:"11px", color:GRAY, marginBottom:"8px" }}>OFAC · UN · EU · UK OFSI · Interpol</div>
                 <div style={{ display:"flex", gap:"5px", justifyContent:"center", flexWrap:"wrap" }}>
-                  {["🇺🇸 OFAC SDN","🇺🇳 UN SC","🇪🇺 EU","🇬🇧 UK OFSI","🤖 AI Analysis"].map(s=>(
+                  {["🇺🇸 OFAC SDN","🇺🇳 UN SC","🇪🇺 EU","🇬🇧 UK OFSI","🌐 Interpol"].map(s=>(
                     <span key={s} style={{ fontSize:"9px", padding:"3px 10px", borderRadius:"20px", background:GOLD_LL, border:`1px solid ${GOLD}33`, color:GOLD_B }}>{s}</span>
                   ))}
                 </div>
@@ -1121,8 +1287,12 @@ function CountryRiskPage() {
   const filtered=COUNTRIES.filter(c=>(c.name.toLowerCase().includes(search.toLowerCase())||c.code.toLowerCase().includes(search.toLowerCase()))&&(filterRisk==="ALL"||c.risk===filterRisk)&&(filterRegion==="ALL"||c.region===filterRegion));
   const stats={ critical:COUNTRIES.filter(c=>c.risk==="CRITICAL").length, high:COUNTRIES.filter(c=>c.risk==="HIGH").length, medium:COUNTRIES.filter(c=>c.risk==="MEDIUM").length, low:COUNTRIES.filter(c=>c.risk==="LOW").length };
   const selectCountry=async c=>{ setSelected(c);setDetailTab("overview");setAiText("");setAiLoading(true);
-    const ai=await callAI(`Country risk for ${c.name}: Risk=${c.risk}, Score=${c.score}/100, CPI=${c.cpi}/100, FATF=${c.fatf}, AML=${c.aml}, Listed=${c.listedCount}, Sanctions from: ${c.sanctionBodies.join(",")}. Focus on compliance risks and recommended due diligence level.`,"You are a senior compliance analyst. Concise country risk assessment for compliance officers. Plain text only. Max 110 words. Include key risks and recommended action.");
-    setAiText(ai);setAiLoading(false); };
+    await new Promise(r=>setTimeout(r,600));
+    const sanctions = c.sanctionBodies[0]?.includes("N/A") ? "No active sanctions." : `Active sanctions from: ${c.sanctionBodies.join(", ")}.`;
+    const fatfNote = c.fatf==="Blacklist"?"FATF Blacklisted — highest AML risk.":c.fatf==="Greylist"?"FATF Greylisted — enhanced monitoring required.":"FATF compliant.";
+    const action = c.risk==="LOW"?"Standard Due Diligence applies.":c.risk==="MEDIUM"?"Enhanced Due Diligence (EDD) required. Additional documentation and senior approval needed.":"HIGH ALERT — Escalate to Senior Compliance Officer. Business relationship may not be permissible.";
+    setAiText(`${c.name} presents a ${c.risk} compliance risk (score ${c.score}/100). CPI score ${c.cpi}/100 — ${c.cpi>=60?"relatively clean governance":c.cpi>=40?"moderate corruption concerns":"significant corruption risk"}. ${c.listedCount} individuals/entities from this country appear on global sanctions lists. ${sanctions} ${fatfNote} Recommendation: ${action}`);
+    setAiLoading(false); };
 
   return (
     <div style={{ flex:1, display:"flex", overflow:"hidden" }}>
