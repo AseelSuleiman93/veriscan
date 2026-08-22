@@ -1,6 +1,25 @@
 import { useState, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-// ── THEME ─────────────────────────────────────────────────────────────────────
+// ── SUPABASE CONNECTION ──────────────────────────────────────────────────
+const supabase = createClient(
+  "https://auusgukjkfqmfovjkkuw.supabase.co",
+  "sb_publishable_8qOjJiLZsU-BTJYSE6UdOw_zhefbTLa"
+);
+
+function mapSourceLabel(source) {
+  if (source === "OFAC_SDN") return "OFAC SDN";
+  if (source === "UN_SC") return "UN";
+  if (source === "EU_CONS") return "EU";
+  if (source === "UK_OFSI") return "UK OFSI";
+  return source;
+}
+
+function sourceUrl(source) {
+  if (source === "OFAC_SDN") return "https://sanctionssearch.ofac.treas.gov/";
+  if (source === "UN_SC") return "https://scsanctions.un.org/";
+  return "https://sanctionssearch.ofac.treas.gov/";
+}
 const GOLD    = "#B8860B";
 const GOLD_L  = "#D4A017";
 const GOLD_LL = "#FDF6E3";
@@ -262,37 +281,50 @@ function getSourceFlags(lists) {
 
 async function screenLive(name, type="both", extra={}) {
   if (!name?.trim()) return [];
-  await new Promise(r=>setTimeout(r,600)); // Simulate search delay
 
-  const results = [];
-  for (const entry of SDN_DB) {
-    if (type==="person" && entry.type!=="Individual") continue;
-    if (type==="org"    && entry.type!=="Entity") continue;
-    // Country filter
-    if (extra.country && entry.country &&
-        !entry.country.toLowerCase().includes(extra.country.toLowerCase()) &&
-        !extra.country.toLowerCase().includes(entry.country.toLowerCase())) continue;
+  let query = supabase
+    .from("sanctioned_entities")
+    .select("*")
+    .ilike("name", `%${name.trim()}%`)
+    .limit(200);
 
-    const score = matchScore(name, entry);
-    if (score < 0.45) continue;
+  if (type === "person") query = query.eq("entity_type", "Individual");
+  if (type === "org")    query = query.eq("entity_type", "Entity");
 
-    results.push({
-      id: entry.id,
-      name: entry.name,
-      type: entry.type,
-      score,
-      risk: score>=0.85?"HIGH":score>=0.65?"MEDIUM":"LOW",
-      lists: entry.lists,
-      sourceFlags: getSourceFlags(entry.lists),
-      program: entry.program,
-      country: entry.country,
-      dob: entry.dob,
-      aliases: entry.aliases,
-      reason: entry.reason,
-      address: extra.address||"—",
-      url:"https://sanctionssearch.ofac.treas.gov/",
-    });
+  const { data, error } = await query;
+  if (error) {
+    console.error("Supabase screening error:", error);
+    return [];
   }
+
+  const results = (data || [])
+    .map(entry => {
+      const score = matchScore(name, { name: entry.name, aliases: entry.aliases || [] });
+      if (score < 0.45) return null;
+      if (extra.country && entry.country &&
+          !entry.country.toLowerCase().includes(extra.country.toLowerCase()) &&
+          !extra.country.toLowerCase().includes(entry.country.toLowerCase())) return null;
+
+      const listLabel = mapSourceLabel(entry.source);
+      return {
+        id: entry.id,
+        name: entry.name,
+        type: entry.entity_type,
+        score,
+        risk: score>=0.85?"HIGH":score>=0.65?"MEDIUM":"LOW",
+        lists: [listLabel],
+        sourceFlags: getSourceFlags([listLabel]),
+        program: entry.program,
+        country: entry.country,
+        dob: entry.dob,
+        aliases: entry.aliases || [],
+        reason: entry.reason,
+        address: extra.address || "—",
+        url: sourceUrl(entry.source),
+      };
+    })
+    .filter(Boolean);
+
   return results.sort((a,b)=>b.score-a.score).slice(0,8);
 }
 
