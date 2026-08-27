@@ -14,9 +14,8 @@
 //   npm install @supabase/supabase-js fast-xml-parser
 // ============================================================================
 
-const { createClient } = require('@supabase/supabase-js');
-const { XMLParser } = require('fast-xml-parser');
-
+import { createClient } from '@supabase/supabase-js';
+import { XMLParser } from 'fast-xml-parser';
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -336,11 +335,6 @@ async function syncAll() {
   return { ofac, un, eu };
 }
 
-if (require.main === module) {
-  syncAll().then(() => process.exit(0)).catch(err => {
-    console.error(err);
-    process.exit(1);
-  });
-}
 
-module.exports = { syncAll, syncOFAC, syncUN, syncEU };
+
+export { syncAll, syncOFAC, syncUN, syncEU };
