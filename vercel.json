@@ -1,0 +1,1 @@
+{"crons":[{"path":"/api/cron/sync-sanctions","schedule":"0 3 * * *"}]}
